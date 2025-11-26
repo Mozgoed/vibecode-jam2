@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: vibecode-backend
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persist database
+      - ./server/vibecode.db:/app/vibecode.db
+      # For development - hot reload (uncomment if needed)
+      # - ./server:/app
+      # - /app/node_modules
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - vibecode-network
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: vibecode-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - vibecode-network
+
+networks:
+  vibecode-network:
+    driver: bridge
+
+volumes:
+  db-data:
