@@ -10,6 +10,9 @@ export default function Workspace() {
     const [task, setTask] = useState(null);
     const [code, setCode] = useState('// Write your solution here\n');
     const [output, setOutput] = useState(null);
+    // State to hold AI review text and loading flag
+    const [review, setReview] = useState('');
+    const [reviewLoading, setReviewLoading] = useState(false);
     const [loading, setLoading] = useState(false);
     const [antiCheatLog, setAntiCheatLog] = useState([]);
     const [lastEditTime, setLastEditTime] = useState(null);
@@ -75,6 +78,22 @@ export default function Workspace() {
         setLastEditTime(now);
     };
 
+    // Call the backend to request an AI code review via SciBox
+    const handleReview = async () => {
+        // Do not issue review while code is still running or another review is in progress
+        if (loading || reviewLoading) return;
+        setReviewLoading(true);
+        try {
+            const res = await axios.post('http://localhost:3001/api/review', { code });
+            // Expect { review: string } in response
+            setReview(res.data.review || 'No review returned.');
+        } catch (err) {
+            setReview('Error fetching review: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setReviewLoading(false);
+        }
+    };
+
     const handleRun = async () => {
         setLoading(true);
         try {
@@ -118,6 +137,8 @@ export default function Workspace() {
                     <button onClick={() => navigate('/')}>Back</button>
                     <button onClick={handleRun} disabled={loading}>Run Code</button>
                     <button onClick={handleSubmit} disabled={loading} className="primary">Submit</button>
+                    {/* AI Review button */}
+                    <button onClick={handleReview} disabled={loading || reviewLoading}>AI Review</button>
                 </div>
             </header>
             <div className="workspace-body">
@@ -156,6 +177,16 @@ export default function Workspace() {
                             {output.results && output.passed && <div className="success-msg">All tests passed!</div>}
                         </div>
                     )}
+                    {/* Display AI review below the test results */}
+                    <div className="review-section">
+                        {reviewLoading && <div>Loading review...</div>}
+                        {!reviewLoading && review && (
+                            <div className="review-text">
+                                <h3>AI Review</h3>
+                                <pre>{review}</pre>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
