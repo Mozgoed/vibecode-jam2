@@ -133,6 +133,74 @@ app.post('/api/anticheat', (req, res) => {
     );
 });
 
+// AI code review endpoint using SciBox (or similar) API
+// Expects { code: string } in the body. It will forward the code to a remote AI
+// code review service defined by environment variables SCIBOX_API_URL and SCIBOX_API_KEY.
+// If these variables are not set, a placeholder review message is returned.
+app.post('/api/review', async (req, res) => {
+    // Endpoint to request an AI-generated code review via SciBox.
+    // It accepts raw JavaScript code in the request body and forwards it to the
+    // SciBox chat completion API using a code-focused model. The system prompt
+    // instructs the model to act as an experienced reviewer and provide
+    // constructive feedback on correctness, performance, readability and
+    // improvement suggestions.
+    const { code } = req.body;
+    if (!code) {
+        return res.status(400).json({ error: 'code is required' });
+    }
+    // Determine API URL and token. SCIBOX_API_URL can specify a full URL
+    // including protocol/host/path. If not provided, fall back to the
+    // default SciBox chat completions endpoint.
+    const baseUrl = process.env.SCIBOX_API_URL || 'https://llm.tlv.scibox.tech/v1/chat/completions';
+    const apiKey = process.env.SCIBOX_API_KEY;
+    // Determine model: allow override via env, else use code‑assistant model.
+    const model = process.env.SCIBOX_MODEL || 'qwen3-coder-30b-a3b-instruct-fp8';
+    // Compose messages for the chat API. The system prompt sets the role
+    // and instructs the assistant how to respond.
+    const systemPrompt =
+        'You are a seasoned code reviewer. Examine the following JavaScript code and provide a detailed review. ' +
+        'Focus on correctness, edge cases, efficiency and readability. Highlight any potential bugs or stylistic issues, ' +
+        'suggest improvements and explain your reasoning clearly.';
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: code }
+    ];
+    try {
+        const response = await fetch(baseUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+            },
+            body: JSON.stringify({
+                model,
+                messages,
+                temperature: 0.2,
+                top_p: 0.9,
+                max_tokens: 800
+            })
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => 'Unknown error');
+            return res.status(500).json({ error: `Review service error: ${response.status} ${text}` });
+        }
+        const data = await response.json().catch(() => null);
+        // Parse the assistant's reply. SciBox chat API follows the OpenAI format: { choices: [ { message: { role, content } } ], ... }
+        let reviewText = '';
+        if (data && Array.isArray(data.choices) && data.choices[0]?.message?.content) {
+            reviewText = data.choices[0].message.content.trim();
+        } else if (data && data.review) {
+            reviewText = data.review;
+        } else {
+            reviewText = JSON.stringify(data);
+        }
+        return res.json({ review: reviewText });
+    } catch (err) {
+        console.error('Review error', err);
+        return res.status(500).json({ error: 'Failed to get review.' });
+    }
+});
+
 // Qualification Routes
 const questions = require('./questions');
 
