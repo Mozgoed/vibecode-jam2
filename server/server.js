@@ -73,6 +73,15 @@ app.get('/api/tasks/:id', (req, res) => {
 app.post('/api/run', (req, res) => {
     const { code, taskId, type } = req.body; // type: 'test' (visible) or 'submit' (hidden)
 
+    // Basic static analysis to detect suspiciously short solutions (possible copy‑paste or hack)
+    // Remove whitespace and comments for a rough length check. If code is extremely short (e.g. < 15 characters)
+    // mark it as suspicious. This is a heuristic for MVP anti‑cheat.
+    const normalized = (code || '')
+        .replace(/\/\*[^]*?\*\//g, '') // remove block comments
+        .replace(/\/\/.*$/gm, '')       // remove line comments
+        .replace(/\s+/g, '');            // remove whitespace
+    const suspiciousShort = normalized.length < 15;
+
     db.get("SELECT examples, tests FROM tasks WHERE id = ?", [taskId], async (err, row) => {
         if (err || !row) {
             res.status(404).json({ error: "Task not found" });
@@ -97,8 +106,31 @@ app.post('/api/run', (req, res) => {
         }
 
         const result = await execute(code, testCases);
+        // Attach suspicion flag if detected. The client/UI or admin can later interpret this.
+        result.suspiciousShortSolution = suspiciousShort;
         res.json(result);
     });
+});
+
+// Anti‑cheat logging endpoint. Clients can post events to this route to record suspicious behaviour.
+// Expected payload: { session_id?, submission_id?, event_type, timestamp, details }
+app.post('/api/anticheat', (req, res) => {
+    const { session_id = null, submission_id = null, event_type, timestamp, details = '' } = req.body;
+    if (!event_type || !timestamp) {
+        res.status(400).json({ error: 'Missing event_type or timestamp' });
+        return;
+    }
+    db.run(
+        "INSERT INTO anti_cheat_logs (session_id, submission_id, event_type, timestamp, details) VALUES (?, ?, ?, ?, ?)",
+        [session_id, submission_id, event_type, timestamp, JSON.stringify(details)],
+        function (err) {
+            if (err) {
+                res.status(500).json({ error: err.message });
+                return;
+            }
+            res.json({ log_id: this.lastID });
+        }
+    );
 });
 
 // Qualification Routes

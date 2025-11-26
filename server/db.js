@@ -45,6 +45,18 @@ function initDb() {
             FOREIGN KEY(session_id) REFERENCES sessions(id),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         )`);
+
+        // Anti-cheat logs table
+        db.run(`CREATE TABLE IF NOT EXISTS anti_cheat_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER,
+            submission_id INTEGER,
+            event_type TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            details TEXT,
+            FOREIGN KEY(session_id) REFERENCES sessions(id),
+            FOREIGN KEY(submission_id) REFERENCES submissions(id)
+        )`);
         
         // Seed some initial data if empty
         db.get("SELECT count(*) as count FROM tasks", (err, row) => {

@@ -21,6 +21,13 @@ function execute(userCode, testCases) {
         const context = vm.createContext(sandbox);
 
         try {
+            // Basic static check for disallowed globals. Disallow use of eval() and Function constructor.
+            // We search for patterns like `eval(`, `Function(` or `new Function` outside of strings.
+            const forbiddenPattern = /\b(eval\s*\(|Function\s*\(|new\s+Function\b)/;
+            if (forbiddenPattern.test(userCode)) {
+                resolve({ error: 'Use of eval or Function constructor is not allowed.', passed: false });
+                return;
+            }
             // 1. Run user code to define functions
             vm.runInContext(userCode, context, { timeout: 1000 });
 
