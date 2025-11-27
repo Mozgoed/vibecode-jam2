@@ -58,14 +58,48 @@ function initDb() {
             FOREIGN KEY(submission_id) REFERENCES submissions(id)
         )`);
 
+        // Challenges table - tracks challenge sessions for candidates
+        db.run(`CREATE TABLE IF NOT EXISTS challenges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            level TEXT NOT NULL,
+            task_ids TEXT NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER,
+            status TEXT NOT NULL DEFAULT 'in_progress',
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )`);
+
+        // Challenge submissions table - tracks individual task submissions within a challenge
+        db.run(`CREATE TABLE IF NOT EXISTS challenge_submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenge_id INTEGER NOT NULL,
+            task_id INTEGER NOT NULL,
+            code TEXT,
+            passed INTEGER DEFAULT 0,
+            submitted_at INTEGER,
+            FOREIGN KEY(challenge_id) REFERENCES challenges(id),
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        )`);
+
         // Users table for authentication. Stores a unique username, a hashed password and a role ('candidate' or 'admin').
         db.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'candidate',
-            created_at INTEGER
+            created_at INTEGER,
+            qualification_passed INTEGER DEFAULT 0,
+            qualification_level TEXT
         )`);
+
+        // Auto-migration: add qualification columns if they don't exist (for existing databases)
+        db.run(`ALTER TABLE users ADD COLUMN qualification_passed INTEGER DEFAULT 0`, (err) => {
+            // Ignore "duplicate column" error - means column already exists
+        });
+        db.run(`ALTER TABLE users ADD COLUMN qualification_level TEXT`, (err) => {
+            // Ignore "duplicate column" error - means column already exists
+        });
 
         // Seed some initial data if empty
         db.get("SELECT count(*) as count FROM tasks", (err, row) => {

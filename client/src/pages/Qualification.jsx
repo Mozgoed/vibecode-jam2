@@ -23,12 +23,18 @@ export default function Qualification() {
 
     const handleSubmit = async () => {
         try {
-            const res = await axios.post('http://localhost:3001/api/qualification/submit', { answers });
+            const userStr = localStorage.getItem('user');
+            const userId = userStr ? JSON.parse(userStr).user_id : null;
+
+            const res = await axios.post('http://localhost:3001/api/qualification/submit', {
+                answers,
+                userId
+            });
             const { level, score } = res.data;
-            // Save level to local storage or state context (for MVP just pass via navigate state or URL)
-            // Actually, let's just navigate to a "Level Assigned" page or back to Welcome with level param
+
             alert(`You scored ${score}/${questions.length}. Your level is: ${level.toUpperCase()}`);
-            navigate(`/?level=${level}`);
+            // Reload the page to force fresh data fetch
+            window.location.href = '/';
         } catch (err) {
             console.error(err);
         }

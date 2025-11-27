@@ -253,7 +253,7 @@ app.get('/api/qualification/questions', (req, res) => {
 });
 
 app.post('/api/qualification/submit', (req, res) => {
-    const { answers } = req.body; // { questionId: optionIndex }
+    const { answers, userId } = req.body; // { questionId: optionIndex }
     let score = 0;
 
     questions.forEach(q => {
@@ -267,7 +267,255 @@ app.post('/api/qualification/submit', (req, res) => {
     if (percentage >= 80) level = 'senior';
     else if (percentage >= 40) level = 'middle';
 
-    res.json({ score, level });
+    // Update user record with qualification status - wait for completion before sending response
+    if (userId) {
+        db.run(
+            "UPDATE users SET qualification_passed = 1, qualification_level = ? WHERE id = ?",
+            [level, userId],
+            (err) => {
+                if (err) {
+                    console.error('Error updating qualification status:', err);
+                }
+                // Send response AFTER database update completes
+                res.json({ score, level });
+            }
+        );
+    } else {
+        res.json({ score, level });
+    }
+});
+
+// Challenge Routes
+
+// Start a new challenge for a user
+app.post('/api/challenges/start', (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+    }
+
+    // Get user's qualification level
+    db.get("SELECT qualification_level FROM users WHERE id = ?", [userId], (err, user) => {
+        if (err || !user || !user.qualification_level) {
+            return res.status(400).json({ error: 'User not qualified or not found' });
+        }
+
+        const level = user.qualification_level;
+
+        // Get 3 random tasks of this level
+        db.all(
+            "SELECT id, title, description, level, examples FROM tasks WHERE level = ? ORDER BY RANDOM() LIMIT 3",
+            [level],
+            (err, tasks) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (tasks.length < 3) {
+                    return res.status(400).json({ error: 'Not enough tasks available for this level' });
+                }
+
+                const taskIds = tasks.map(t => t.id);
+                const startTime = Date.now();
+
+                // Create challenge record
+                db.run(
+                    "INSERT INTO challenges (user_id, level, task_ids, start_time, status) VALUES (?, ?, ?, ?, 'in_progress')",
+                    [userId, level, JSON.stringify(taskIds), startTime],
+                    function (err) {
+                        if (err) {
+                            return res.status(500).json({ error: err.message });
+                        }
+
+                        // Parse examples for each task
+                        const tasksWithExamples = tasks.map(t => ({
+                            ...t,
+                            examples: JSON.parse(t.examples)
+                        }));
+
+                        res.json({
+                            challenge_id: this.lastID,
+                            tasks: tasksWithExamples,
+                            start_time: startTime
+                        });
+                    }
+                );
+            }
+        );
+    });
+});
+
+// Get challenge details
+app.get('/api/challenges/:id', (req, res) => {
+    const challengeId = req.params.id;
+
+    db.get("SELECT * FROM challenges WHERE id = ?", [challengeId], (err, challenge) => {
+        if (err || !challenge) {
+            return res.status(404).json({ error: 'Challenge not found' });
+        }
+
+        const taskIds = JSON.parse(challenge.task_ids);
+
+        // Get tasks
+        db.all(
+            `SELECT id, title, description, level, examples FROM tasks WHERE id IN (${taskIds.join(',')})`,
+            [],
+            (err, tasks) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                // Get submissions for this challenge
+                db.all(
+                    "SELECT * FROM challenge_submissions WHERE challenge_id = ?",
+                    [challengeId],
+                    (err, submissions) => {
+                        if (err) {
+                            return res.status(500).json({ error: err.message });
+                        }
+
+                        // Parse examples
+                        const tasksWithExamples = tasks.map(t => ({
+                            ...t,
+                            examples: JSON.parse(t.examples)
+                        }));
+
+                        res.json({
+                            challenge,
+                            tasks: tasksWithExamples,
+                            submissions
+                        });
+                    }
+                );
+            }
+        );
+    });
+});
+
+// Submit solution for a task in challenge
+app.post('/api/challenges/:id/submit-task', async (req, res) => {
+    const challengeId = req.params.id;
+    const { taskId, code } = req.body;
+
+    if (!taskId || !code) {
+        return res.status(400).json({ error: 'taskId and code are required' });
+    }
+
+    // Verify challenge exists and is in progress
+    db.get("SELECT * FROM challenges WHERE id = ? AND status = 'in_progress'", [challengeId], async (err, challenge) => {
+        if (err || !challenge) {
+            return res.status(404).json({ error: 'Challenge not found or already completed' });
+        }
+
+        // Get task tests
+        db.get("SELECT tests FROM tasks WHERE id = ?", [taskId], async (err, task) => {
+            if (err || !task) {
+                return res.status(404).json({ error: 'Task not found' });
+            }
+
+            const tests = JSON.parse(task.tests);
+            const result = await execute(code, tests);
+            const passed = result.passed ? 1 : 0;
+            const submittedAt = Date.now();
+
+            // Check if submission already exists
+            db.get(
+                "SELECT id FROM challenge_submissions WHERE challenge_id = ? AND task_id = ?",
+                [challengeId, taskId],
+                (err, existing) => {
+                    if (existing) {
+                        // Update existing submission
+                        db.run(
+                            "UPDATE challenge_submissions SET code = ?, passed = ?, submitted_at = ? WHERE id = ?",
+                            [code, passed, submittedAt, existing.id],
+                            (err) => {
+                                if (err) {
+                                    return res.status(500).json({ error: err.message });
+                                }
+                                res.json({ ...result, submission_id: existing.id });
+                            }
+                        );
+                    } else {
+                        // Create new submission
+                        db.run(
+                            "INSERT INTO challenge_submissions (challenge_id, task_id, code, passed, submitted_at) VALUES (?, ?, ?, ?, ?)",
+                            [challengeId, taskId, code, passed, submittedAt],
+                            function (err) {
+                                if (err) {
+                                    return res.status(500).json({ error: err.message });
+                                }
+                                res.json({ ...result, submission_id: this.lastID });
+                            }
+                        );
+                    }
+                }
+            );
+        });
+    });
+});
+
+// Complete a challenge
+app.post('/api/challenges/:id/complete', (req, res) => {
+    const challengeId = req.params.id;
+    const endTime = Date.now();
+
+    db.get("SELECT * FROM challenges WHERE id = ?", [challengeId], (err, challenge) => {
+        if (err || !challenge) {
+            return res.status(404).json({ error: 'Challenge not found' });
+        }
+
+        if (challenge.status === 'completed') {
+            return res.status(400).json({ error: 'Challenge already completed' });
+        }
+
+        // Update challenge status
+        db.run(
+            "UPDATE challenges SET end_time = ?, status = 'completed' WHERE id = ?",
+            [endTime, challengeId],
+            (err) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                // Get submissions count
+                db.get(
+                    "SELECT COUNT(*) as total, SUM(passed) as passed_count FROM challenge_submissions WHERE challenge_id = ?",
+                    [challengeId],
+                    (err, stats) => {
+                        if (err) {
+                            return res.status(500).json({ error: err.message });
+                        }
+
+                        const duration = endTime - challenge.start_time;
+
+                        res.json({
+                            success: true,
+                            duration,
+                            tasks_completed: stats.passed_count || 0,
+                            total_tasks: 3
+                        });
+                    }
+                );
+            }
+        );
+    });
+});
+
+// Get user's challenge history
+app.get('/api/challenges/user/:userId', (req, res) => {
+    const userId = req.params.userId;
+
+    db.all(
+        "SELECT * FROM challenges WHERE user_id = ? ORDER BY start_time DESC",
+        [userId],
+        (err, challenges) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({ challenges });
+        }
+    );
 });
 
 // Session & Submission Routes
@@ -677,7 +925,7 @@ app.get('/api/sessions/:id/next', (req, res) => {
 
 // List all candidates (admin).
 app.get('/api/admin/candidates', (req, res) => {
-    db.all("SELECT id, username, role, created_at FROM users", [], (err, rows) => {
+    db.all("SELECT id, username, role, created_at, qualification_passed, qualification_level FROM users", [], (err, rows) => {
         if (err) {
             return res.status(500).json({ error: err.message });
         }
@@ -747,6 +995,44 @@ app.get('/api/admin/candidates/:id/sessions/:sessionId', (req, res) => {
             });
         });
     });
+});
+
+// Get all challenges for admin view
+app.get('/api/admin/challenges', (req, res) => {
+    db.all(
+        `SELECT c.*, u.username 
+         FROM challenges c 
+         JOIN users u ON c.user_id = u.id 
+         ORDER BY c.start_time DESC`,
+        [],
+        (err, challenges) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+
+            // Get submission counts for each challenge
+            const promises = challenges.map(challenge => {
+                return new Promise((resolve) => {
+                    db.get(
+                        "SELECT COUNT(*) as total, SUM(passed) as passed_count FROM challenge_submissions WHERE challenge_id = ?",
+                        [challenge.id],
+                        (err, stats) => {
+                            resolve({
+                                ...challenge,
+                                task_ids: JSON.parse(challenge.task_ids),
+                                tasks_completed: stats?.passed_count || 0,
+                                total_tasks: 3
+                            });
+                        }
+                    );
+                });
+            });
+
+            Promise.all(promises).then(enrichedChallenges => {
+                res.json({ challenges: enrichedChallenges });
+            });
+        }
+    );
 });
 
 app.listen(PORT, () => {

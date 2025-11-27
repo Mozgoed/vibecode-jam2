@@ -4,26 +4,45 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 
 export default function Welcome() {
-    const [tasks, setTasks] = useState([]);
+    const [qualificationStatus, setQualificationStatus] = useState(null);
+    const [activeChallenge, setActiveChallenge] = useState(null);
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const level = searchParams.get('level');
     const { user, login, logout } = useAuth();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [loadingStatus, setLoadingStatus] = useState(true);
 
     useEffect(() => {
-        if (user) {
-            const url = level
-                ? `http://localhost:3001/api/tasks?level=${level}`
-                : 'http://localhost:3001/api/tasks';
+        if (user && user.role === 'candidate') {
+            setLoadingStatus(true);
+            // Check qualification status
+            axios.get(`http://localhost:3001/api/admin/candidates`)
+                .then(res => {
+                    const currentUser = res.data.candidates.find(c => c.id === user.user_id);
+                    if (currentUser) {
+                        setQualificationStatus({
+                            passed: currentUser.qualification_passed === 1,
+                            level: currentUser.qualification_level
+                        });
+                    }
+                })
+                .catch(err => console.error(err))
+                .finally(() => setLoadingStatus(false));
 
-            axios.get(url)
-                .then(res => setTasks(res.data.tasks))
+            // Check for active challenge
+            axios.get(`http://localhost:3001/api/challenges/user/${user.user_id}`)
+                .then(res => {
+                    const inProgress = res.data.challenges.find(c => c.status === 'in_progress');
+                    setActiveChallenge(inProgress);
+                })
                 .catch(err => console.error(err));
+        } else {
+            setLoadingStatus(false);
         }
-    }, [level, user]);
+    }, [user]);
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -31,6 +50,20 @@ export default function Welcome() {
         const result = await login(username, password);
         if (!result.success) {
             setError(result.error);
+        }
+    };
+
+    const handleStartChallenge = async () => {
+        setLoading(true);
+        try {
+            const res = await axios.post('http://localhost:3001/api/challenges/start', {
+                userId: user.user_id
+            });
+            navigate(`/challenge/${res.data.challenge_id}`);
+        } catch (err) {
+            alert('Error starting challenge: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -70,45 +103,80 @@ export default function Welcome() {
         );
     }
 
-    // Show tasks only after user is authenticated
+    // Admin view - redirect to admin panel
+    if (user.role === 'admin') {
+        return (
+            <div className="container">
+                <header className="welcome-header">
+                    <h1>VibeCode Jam</h1>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <span>Welcome, {user.username}</span>
+                        <button className="text-btn" onClick={() => navigate('/admin')}>Admin Panel</button>
+                        <button className="text-btn" onClick={logout}>Logout</button>
+                    </div>
+                </header>
+                <div style={{ textAlign: 'center', margin: '2rem 0' }}>
+                    <p>Please use the Admin Panel to manage candidates and tasks.</p>
+                    <button className="primary" onClick={() => navigate('/admin')}>Go to Admin Panel</button>
+                </div>
+            </div>
+        );
+    }
+
+    // Candidate view
     return (
         <div className="container">
             <header className="welcome-header">
                 <h1>VibeCode Jam</h1>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     <span>Welcome, {user.username}</span>
-                    {user.role === 'admin' && (
-                        <button className="text-btn" onClick={() => navigate('/admin')}>Admin</button>
-                    )}
                     <button className="text-btn" onClick={logout}>Logout</button>
                 </div>
             </header>
 
-            {!level && (
+            {loadingStatus && (
                 <div style={{ textAlign: 'center', margin: '2rem 0' }}>
+                    <p>Loading...</p>
+                </div>
+            )}
+
+            {!loadingStatus && !qualificationStatus?.passed && (
+                <div style={{ textAlign: 'center', margin: '2rem 0' }}>
+                    <h2>Get Started</h2>
+                    <p>Please complete the qualification test to determine your level and begin coding challenges.</p>
                     <button className="primary" onClick={() => navigate('/qualification')}>
                         Take Qualification Test
                     </button>
                 </div>
             )}
-            {level && (
-                <div className="level-info">
-                    Your Level: <span className={`badge ${level}`}>{level}</span>
-                    <button className="text-btn" onClick={() => navigate('/')}>Clear</button>
-                </div>
-            )}
 
-            <p>Select a challenge to begin:</p>
-            <div className="task-list">
-                {tasks.length === 0 && <p>No tasks found for this level.</p>}
-                {tasks.map(task => (
-                    <div key={task.id} className="task-card" onClick={() => navigate(`/workspace/${task.id}`)}>
-                        <h3>{task.title}</h3>
-                        <span className={`badge ${task.level}`}>{task.level}</span>
-                        <p>{task.description}</p>
+            {!loadingStatus && qualificationStatus?.passed && (
+                <>
+                    <div className="level-info" style={{ textAlign: 'center', margin: '2rem 0' }}>
+                        <h2>Your Level: <span className={`badge ${qualificationStatus.level}`}>{qualificationStatus.level}</span></h2>
                     </div>
-                ))}
-            </div>
+
+                    {activeChallenge ? (
+                        <div style={{ textAlign: 'center', margin: '2rem 0' }}>
+                            <p>You have an active challenge in progress.</p>
+                            <button className="primary" onClick={() => navigate(`/challenge/${activeChallenge.id}`)}>
+                                Resume Challenge
+                            </button>
+                        </div>
+                    ) : (
+                        <div style={{ textAlign: 'center', margin: '2rem 0' }}>
+                            <p>Ready to start your coding challenge? You will receive 3 tasks to solve.</p>
+                            <button
+                                className="primary"
+                                onClick={handleStartChallenge}
+                                disabled={loading}
+                            >
+                                {loading ? 'Starting...' : 'Start Challenge'}
+                            </button>
+                        </div>
+                    )}
+                </>
+            )}
         </div>
     );
 }

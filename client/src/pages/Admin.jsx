@@ -5,6 +5,7 @@ export default function Admin() {
     const [activeTab, setActiveTab] = useState('tasks');
     const [tasks, setTasks] = useState([]);
     const [sessions, setSessions] = useState([]);
+    const [challenges, setChallenges] = useState([]);
 
     // Task upload form
     const [newTask, setNewTask] = useState({
@@ -30,6 +31,10 @@ export default function Admin() {
         } else if (activeTab === 'candidates') {
             axios.get('http://localhost:3001/api/admin/candidates')
                 .then(res => setCandidates(res.data.candidates))
+                .catch(err => console.error(err));
+        } else if (activeTab === 'challenges') {
+            axios.get('http://localhost:3001/api/admin/challenges')
+                .then(res => setChallenges(res.data.challenges))
                 .catch(err => console.error(err));
         }
     };
@@ -134,6 +139,12 @@ export default function Admin() {
                     onClick={() => setActiveTab('candidates')}
                 >
                     Candidates
+                </button>
+                <button
+                    className={activeTab === 'challenges' ? 'active' : ''}
+                    onClick={() => setActiveTab('challenges')}
+                >
+                    Challenge Results
                 </button>
                 <button
                     className={activeTab === 'password' ? 'active' : ''}
@@ -306,6 +317,53 @@ export default function Admin() {
                         </div>
                         <button type="submit" className="primary">Change Password</button>
                     </form>
+                </div>
+            )}
+
+            {activeTab === 'challenges' && (
+                <div className="challenges-admin">
+                    <h2>Challenge Results</h2>
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Candidate</th>
+                                <th>Level</th>
+                                <th>Start Time</th>
+                                <th>Duration</th>
+                                <th>Tasks Completed</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {challenges.map(challenge => {
+                                const duration = challenge.end_time
+                                    ? challenge.end_time - challenge.start_time
+                                    : Date.now() - challenge.start_time;
+                                const formatTime = (ms) => {
+                                    const seconds = Math.floor(ms / 1000);
+                                    const minutes = Math.floor(seconds / 60);
+                                    const hours = Math.floor(minutes / 60);
+                                    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+                                };
+                                return (
+                                    <tr key={challenge.id}>
+                                        <td>{challenge.id}</td>
+                                        <td>{challenge.username}</td>
+                                        <td><span className={`badge ${challenge.level}`}>{challenge.level}</span></td>
+                                        <td>{new Date(challenge.start_time).toLocaleString()}</td>
+                                        <td>{formatTime(duration)}</td>
+                                        <td>{challenge.tasks_completed}/{challenge.total_tasks}</td>
+                                        <td>
+                                            <span className={`badge ${challenge.status === 'completed' ? 'senior' : 'middle'}`}>
+                                                {challenge.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             )}
         </div>
