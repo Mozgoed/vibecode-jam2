@@ -57,6 +57,15 @@ function initDb() {
             FOREIGN KEY(session_id) REFERENCES sessions(id),
             FOREIGN KEY(submission_id) REFERENCES submissions(id)
         )`);
+
+        // Users table for authentication. Stores a unique username, a hashed password and a role ('candidate' or 'admin').
+        db.run(`CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'candidate',
+            created_at INTEGER
+        )`);
         
         // Seed some initial data if empty
         db.get("SELECT count(*) as count FROM tasks", (err, row) => {
