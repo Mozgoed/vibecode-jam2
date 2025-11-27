@@ -9,13 +9,14 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      # Persist database
-      - ./server/vibecode.db:/app/vibecode.db
+      # Persist database using named volume
+      - db-data:/app/data
       # For development - hot reload (uncomment if needed)
       # - ./server:/app
       # - /app/node_modules
     environment:
       - NODE_ENV=production
+      - DB_PATH=/app/data/vibecode.db
     restart: unless-stopped
     networks:
       - vibecode-network

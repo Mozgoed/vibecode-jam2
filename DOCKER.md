@@ -42,6 +42,43 @@ docker-compose down
 docker-compose up -d --build
 ```
 
+## База данных
+
+База данных **автоматически сохраняется** в Docker volume `db-data`. Это означает:
+- ✅ Данные сохраняются между перезапусками контейнеров
+- ✅ Данные сохраняются при обновлении кода
+- ✅ База данных изолирована от хост-системы
+
+### Управление базой данных
+
+**Просмотр данных:**
+```bash
+# Подключиться к контейнеру
+docker exec -it vibecode-backend sh
+
+# Внутри контейнера
+ls -la /app/data/
+```
+
+**Сброс базы данных:**
+```bash
+# Остановить и удалить volume
+docker-compose down -v
+
+# Запустить заново (создаст новую БД с seed данными)
+docker-compose up -d
+```
+
+**Бэкап базы данных:**
+```bash
+# Создать бэкап
+docker cp vibecode-backend:/app/data/vibecode.db ./backup.db
+
+# Восстановить бэкап
+docker cp ./backup.db vibecode-backend:/app/data/vibecode.db
+docker-compose restart backend
+```
+
 ## Доступ к приложению
 
 После запуска приложение будет доступно:
