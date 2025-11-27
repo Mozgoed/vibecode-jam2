@@ -12,8 +12,9 @@
   "dependencies": {
     "body-parser": "^2.2.1",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "sqlite3": "^5.1.7",
-    "openai": "^4.37.0"
+    "openai": "^4.37.0",
+    "sqlite3": "^5.1.7"
   }
 }
