@@ -67,6 +67,13 @@
    npm install
    ```
 
+4. **Configure Environment Variables**
+   Copy the example environment file and set your API key:
+   ```bash
+   cp .example.env .env
+   ```
+   Edit `.env` and set `OPENAI_API_KEY` to your actual API key.
+
 ## Running the Application
 
 ### Start Server (Port 3001)
