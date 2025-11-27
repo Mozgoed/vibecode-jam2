@@ -74,6 +74,17 @@ function initDb() {
                 seedTasks();
             }
         });
+
+        // Seed default admin user
+        db.get("SELECT count(*) as count FROM users WHERE role = 'admin'", (err, row) => {
+            if (row.count === 0) {
+                console.log("Seeding default admin user...");
+                const crypto = require('crypto');
+                const hash = crypto.createHash('sha256').update('admin').digest('hex');
+                const createdAt = Date.now();
+                db.run("INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)", ['admin', hash, 'admin', createdAt]);
+            }
+        });
     });
 }
 

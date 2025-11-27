@@ -14,20 +14,24 @@ export default function Admin() {
         examples: '',
         tests: ''
     });
+    const [newCandidate, setNewCandidate] = useState({ username: '', password: '' });
+    const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '' });
+    const [candidates, setCandidates] = useState([]);
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [activeTab]);
 
     const loadData = () => {
-        axios.get('http://localhost:3001/api/tasks')
-            .then(res => setTasks(res.data.tasks))
-            .catch(err => console.error(err));
-
-        // For MVP, we don't have a sessions list endpoint, so skip for now
-        // axios.get('http://localhost:3001/api/sessions')
-        //     .then(res => setSessions(res.data.sessions))
-        //     .catch(err => console.error(err));
+        if (activeTab === 'tasks') {
+            axios.get('http://localhost:3001/api/tasks')
+                .then(res => setTasks(res.data.tasks))
+                .catch(err => console.error(err));
+        } else if (activeTab === 'candidates') {
+            axios.get('http://localhost:3001/api/admin/candidates')
+                .then(res => setCandidates(res.data.candidates))
+                .catch(err => console.error(err));
+        }
     };
 
     const handleTaskSubmit = async (e) => {
@@ -48,6 +52,49 @@ export default function Admin() {
             loadData();
         } catch (err) {
             alert('Error creating task: ' + err.message);
+        }
+    };
+
+    const handleRegister = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.post('http://localhost:3001/api/register', {
+                username: newCandidate.username,
+                password: newCandidate.password,
+                role: 'candidate'
+            });
+            alert('Candidate registered successfully!');
+            setNewCandidate({ username: '', password: '' });
+            if (activeTab === 'candidates') loadData();
+        } catch (err) {
+            alert('Error registering candidate: ' + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleChangePassword = async (e) => {
+        e.preventDefault();
+        try {
+            // We need the current username. Assuming admin is logged in as 'admin' or we get it from context/localstorage
+            // For simplicity, let's ask for username in the form or assume 'admin' if it's the admin panel changing their own password.
+            // But the requirement says "admin ... possibility to change it after login".
+            // Let's assume this form is for the currently logged in admin to change THEIR password.
+            // We need the username.
+            const userStr = localStorage.getItem('user');
+            if (!userStr) {
+                alert('Not logged in');
+                return;
+            }
+            const user = JSON.parse(userStr);
+
+            await axios.post('http://localhost:3001/api/change-password', {
+                username: user.username,
+                oldPassword: passwordData.oldPassword,
+                newPassword: passwordData.newPassword
+            });
+            alert('Password changed successfully!');
+            setPasswordData({ oldPassword: '', newPassword: '' });
+        } catch (err) {
+            alert('Error changing password: ' + (err.response?.data?.error || err.message));
         }
     };
 
@@ -81,6 +128,18 @@ export default function Admin() {
                     onClick={() => setActiveTab('upload')}
                 >
                     Upload Task
+                </button>
+                <button
+                    className={activeTab === 'candidates' ? 'active' : ''}
+                    onClick={() => setActiveTab('candidates')}
+                >
+                    Candidates
+                </button>
+                <button
+                    className={activeTab === 'password' ? 'active' : ''}
+                    onClick={() => setActiveTab('password')}
+                >
+                    Change Password
                 </button>
             </div>
 
@@ -169,6 +228,83 @@ export default function Admin() {
                         </div>
 
                         <button type="submit" className="primary">Create Task</button>
+                    </form>
+                </div>
+            )}
+
+            {activeTab === 'candidates' && (
+                <div className="candidates-admin">
+                    <h2>Candidates</h2>
+                    <div className="upload-form" style={{ marginBottom: '2rem' }}>
+                        <h3>Register New Candidate</h3>
+                        <form onSubmit={handleRegister}>
+                            <div className="form-group">
+                                <label>Username</label>
+                                <input
+                                    type="text"
+                                    value={newCandidate.username}
+                                    onChange={e => setNewCandidate({ ...newCandidate, username: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Password</label>
+                                <input
+                                    type="password"
+                                    value={newCandidate.password}
+                                    onChange={e => setNewCandidate({ ...newCandidate, password: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <button type="submit" className="primary">Register</button>
+                        </form>
+                    </div>
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Created At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {candidates.map(c => (
+                                <tr key={c.id}>
+                                    <td>{c.id}</td>
+                                    <td>{c.username}</td>
+                                    <td>{c.role}</td>
+                                    <td>{new Date(c.created_at).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {activeTab === 'password' && (
+                <div className="upload-form">
+                    <h2>Change Password</h2>
+                    <form onSubmit={handleChangePassword}>
+                        <div className="form-group">
+                            <label>Old Password</label>
+                            <input
+                                type="password"
+                                value={passwordData.oldPassword}
+                                onChange={e => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                                required
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>New Password</label>
+                            <input
+                                type="password"
+                                value={passwordData.newPassword}
+                                onChange={e => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                required
+                            />
+                        </div>
+                        <button type="submit" className="primary">Change Password</button>
                     </form>
                 </div>
             )}

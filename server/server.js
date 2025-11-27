@@ -400,6 +400,31 @@ app.post('/api/login', (req, res) => {
     );
 });
 
+// Change password route. Expects { username, oldPassword, newPassword }
+app.post('/api/change-password', (req, res) => {
+    const { username, oldPassword, newPassword } = req.body;
+    if (!username || !oldPassword || !newPassword) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+    const oldHashed = hashPassword(oldPassword);
+    const newHashed = hashPassword(newPassword);
+
+    db.get("SELECT id FROM users WHERE username = ? AND password = ?", [username, oldHashed], (err, user) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        db.run("UPDATE users SET password = ? WHERE id = ?", [newHashed, user.id], function (err) {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({ success: true });
+        });
+    });
+});
+
 // ------------ Task management routes ------------
 
 // Update an existing task (admin). Payload should include title, description, level, examples, tests.
