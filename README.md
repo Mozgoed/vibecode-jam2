@@ -18,7 +18,11 @@
 - 🎯 **Level-based Filtering**: Assign tasks based on candidate skill level
 
 ### Security & Anti-Cheat
-- 🕵️ **Activity Tracking**: Monitor copy/paste, tab switching, and focus changes
+- 🕵️ **Activity Tracking**:
+  - **Copy/Paste Detection**: Logs all copy and paste events, including the content of pasted text.
+  - **Window Focus/Blur**: Detects when the user switches to another window or application.
+  - **Tab Visibility**: Tracks when the user switches tabs within the browser.
+  - **Event Logging**: All suspicious events are timestamped and sent to the server for recruiter review.
 - ⏱️ **Timing Metrics**: Track solution time and attempt count
 - 🛡️ **Sandboxed Execution**: Node.js VM prevents dangerous code execution
 
